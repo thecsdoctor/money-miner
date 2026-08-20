@@ -17,7 +17,7 @@ type Engine interface {
 	// (binary present, VRAM sufficient, verthash.dat present, ...).
 	Prepare(ctx context.Context, cfg EngineConfig) error
 	Start(ctx context.Context) error
-	Stop(ctx context.Context) error // graceful: unsubmits, kills child
+	Stop(ctx context.Context) error   // graceful: unsubmits, kills child
 	SetAllocation(a Allocation) error // live CPU%/thread + GPU intensity change
 	Stats() EngineStats               // hashrate, shares acc/rej, uptime
 }
@@ -37,14 +37,14 @@ type Allocation struct {
 
 // EngineConfig is everything an engine needs to point at a pool.
 type EngineConfig struct {
-	Currency   string `json:"currency"`   // "XMR"
-	Algorithm  string `json:"algorithm"`  // "randomx"
-	PoolURL    string `json:"pool_url"`   // stratum+tcp://pool.supportxmr.com:443
-	Wallet     string `json:"wallet"`     // payout address (pool username)
-	WorkerName string `json:"worker_name"` // minerID.workerID pool-side accounting
-	Threads    int    `json:"threads"`
-	GPU        GPUAlloc         `json:"gpu"`
-	Adapter    *AdapterConfig   `json:"adapter,omitempty"`
+	Currency   string            `json:"currency"`    // "XMR"
+	Algorithm  string            `json:"algorithm"`   // "randomx"
+	PoolURL    string            `json:"pool_url"`    // stratum+tcp://pool.supportxmr.com:443
+	Wallet     string            `json:"wallet"`      // payout address (pool username)
+	WorkerName string            `json:"worker_name"` // minerID.workerID pool-side accounting
+	Threads    int               `json:"threads"`
+	GPU        GPUAlloc          `json:"gpu"`
+	Adapter    *AdapterConfig    `json:"adapter,omitempty"`
 	Extra      map[string]string `json:"extra,omitempty"`
 }
 

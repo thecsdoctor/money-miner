@@ -52,4 +52,3 @@ This page is generated from the seeded catalog (`deploy/migrations/V2__seed_curr
   time. The UI enforces them and says why when a GPU coin is not viable on a worker.
 - **DASH/ZEC/DGB** carry ASIC-era honesty notes: home hardware is not competitive
   there; they are catalogued for completeness, not encouragement.
-

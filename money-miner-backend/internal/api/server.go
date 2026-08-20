@@ -17,16 +17,16 @@ import (
 
 // Server holds the handler dependencies.
 type Server struct {
-	cfg    config.Config
-	st     *store.Store
-	auth   *auth.Validator
-	codes  *swarm.Codes
-	hub    *swarm.Hub
-	ev     *events.Broker
+	cfg   config.Config
+	st    *store.Store
+	auth  *auth.Validator
+	codes *swarm.Codes
+	hub   *swarm.Hub
+	ev    *events.Broker
 
-	authedRL  *ratelimit.Limiter // 300/min/user
-	enrollRL  *ratelimit.Limiter // 10/min/IP
-	joinRL    *ratelimit.Limiter // 30/min/IP
+	authedRL *ratelimit.Limiter // 300/min/user
+	enrollRL *ratelimit.Limiter // 10/min/IP
+	joinRL   *ratelimit.Limiter // 30/min/IP
 }
 
 // New builds the server and its router.

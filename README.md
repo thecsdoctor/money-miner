@@ -18,7 +18,7 @@ phone contribute compute with explicit consent.
 > on-chain to your own wallet with explorer links — or an explicitly labeled
 > `SIMULATED` mode. The platform never custodies funds and never touches
 > private keys.
-
+>
 > **Honest economics:** home mining is hobby-scale. A desktop CPU earns
 > cents per day on RandomX-class coins and electricity may cost more than
 > the reward. Pools pay out above thresholds only. Nothing here is an
@@ -85,7 +85,7 @@ Full guide: **[thecsdoctor.github.io/money-miner](https://thecsdoctor.github.io/
 
 ## Repository layout
 
-```
+```text
 money-miner-api/        OpenAPI 3 contract of record + swagger-editor
 money-miner-backend/    one Go module: cmd/server, cmd/worker, cmd/browserhash (wasm)
 money-miner-frontend/   React+TS+Vite SPA, pure CSS, i18n EN/DE

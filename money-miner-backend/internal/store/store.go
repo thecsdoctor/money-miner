@@ -95,21 +95,21 @@ type MetricPoint struct {
 }
 
 type Worker struct {
-	ID        string          `json:"id"`
-	Name      string          `json:"name"`
-	Kind      string          `json:"kind"`
-	OS        string          `json:"os,omitempty"`
-	Arch      string          `json:"arch,omitempty"`
-	CPUModel  string          `json:"cpu_model,omitempty"`
-	CPUCores  int             `json:"cpu_cores,omitempty"`
-	GPUModel  string          `json:"gpu_model,omitempty"`
-	VRAMMB    int             `json:"vram_mb,omitempty"`
-	Caps      json.RawMessage `json:"caps,omitempty"`
-	Status    string          `json:"status"`
-	Hashrate  float64         `json:"hashrate"`
-	Currency  string          `json:"currency,omitempty"`
-	LastSeen  *time.Time      `json:"last_seen"`
-	EnrolledAt time.Time      `json:"enrolled_at"`
+	ID         string          `json:"id"`
+	Name       string          `json:"name"`
+	Kind       string          `json:"kind"`
+	OS         string          `json:"os,omitempty"`
+	Arch       string          `json:"arch,omitempty"`
+	CPUModel   string          `json:"cpu_model,omitempty"`
+	CPUCores   int             `json:"cpu_cores,omitempty"`
+	GPUModel   string          `json:"gpu_model,omitempty"`
+	VRAMMB     int             `json:"vram_mb,omitempty"`
+	Caps       json.RawMessage `json:"caps,omitempty"`
+	Status     string          `json:"status"`
+	Hashrate   float64         `json:"hashrate"`
+	Currency   string          `json:"currency,omitempty"`
+	LastSeen   *time.Time      `json:"last_seen"`
+	EnrolledAt time.Time       `json:"enrolled_at"`
 }
 
 type JoinCode struct {
@@ -745,7 +745,7 @@ func (s *Store) PutExchangeSetting(ctx context.Context, owner, exchange string, 
 // currency has at least one pool with a non-empty api_tpl.
 func (s *Store) WalletsWithPoolAPI(ctx context.Context) ([]struct {
 	Owner, Symbol, Address, ExplorerTxTpl string
-	Pools                                json.RawMessage
+	Pools                                 json.RawMessage
 }, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT w.owner_sub, c.symbol, w.address, c.explorer_tx_tpl, c.pools
@@ -757,7 +757,7 @@ func (s *Store) WalletsWithPoolAPI(ctx context.Context) ([]struct {
 	defer rows.Close()
 	type rowT = struct {
 		Owner, Symbol, Address, ExplorerTxTpl string
-		Pools                                json.RawMessage
+		Pools                                 json.RawMessage
 	}
 	out := []rowT{}
 	for rows.Next() {

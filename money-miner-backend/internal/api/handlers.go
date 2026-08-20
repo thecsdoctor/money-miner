@@ -693,7 +693,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal", "streaming unsupported")
 		return
 	}
-	fmt.Fprintf(w, ": connected\n\n")
+	_, _ = fmt.Fprintf(w, ": connected\n\n")
 	flusher.Flush()
 
 	tick := time.NewTicker(5 * time.Second)
@@ -716,7 +716,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 			_, _ = w.Write(data)
 			flusher.Flush()
 		case <-heartbeat.C:
-			fmt.Fprintf(w, ": ping\n\n")
+			_, _ = fmt.Fprintf(w, ": ping\n\n")
 			flusher.Flush()
 		}
 	}

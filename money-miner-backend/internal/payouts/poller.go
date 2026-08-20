@@ -89,9 +89,9 @@ func (p *Poller) once(ctx context.Context) {
 
 // payment is the normalized shape we extract from a pool response.
 type payment struct {
-	TxID    string
-	Amount  float64
-	PaidAt  *time.Time
+	TxID   string
+	Amount float64
+	PaidAt *time.Time
 }
 
 // check fetches one pool API and records any new payments.
@@ -105,7 +105,7 @@ func (p *Poller) check(ctx context.Context, q poolAPI) {
 		slog.Debug("payouts: fetch", "url", q.url, "err", err)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return
 	}

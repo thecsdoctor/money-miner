@@ -160,7 +160,7 @@ func cmdEnroll(args []string) error {
 	if err != nil {
 		return fmt.Errorf("enroll request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusCreated {
 		var e struct {
 			Error struct {
@@ -269,7 +269,7 @@ func runSession(ctx context.Context, cfg fileConfig, jobs map[string]*jobRuntime
 	if err != nil {
 		return fmt.Errorf("ws dial: %w", err)
 	}
-	defer conn.Close(websocket.StatusNormalClosure, "worker shutting down")
+	defer func() { _ = conn.Close(websocket.StatusNormalClosure, "worker shutting down") }()
 
 	hw := detectHardware()
 	engines := []string{"adapter"} // native-go is a verified stub in v0.1.0
@@ -379,14 +379,14 @@ type assignPayload struct {
 	Miner  string `json:"miner_id"`
 	Engine string `json:"engine"`
 	Config struct {
-		Algorithm  string                 `json:"algorithm"`
-		PoolURL    string                 `json:"pool_url"`
-		PoolUser   string                 `json:"pool_user"`
-		Wallet     string                 `json:"wallet"`
-		WorkerName string                 `json:"worker_name"`
-		Threads    int                    `json:"threads"`
-		GPU        engine.GPUAlloc        `json:"gpu"`
-		Adapter    *engine.AdapterConfig  `json:"adapter"`
+		Algorithm  string                `json:"algorithm"`
+		PoolURL    string                `json:"pool_url"`
+		PoolUser   string                `json:"pool_user"`
+		Wallet     string                `json:"wallet"`
+		WorkerName string                `json:"worker_name"`
+		Threads    int                   `json:"threads"`
+		GPU        engine.GPUAlloc       `json:"gpu"`
+		Adapter    *engine.AdapterConfig `json:"adapter"`
 	} `json:"engine_config"`
 	Simulated bool `json:"simulated"`
 }
@@ -490,7 +490,7 @@ func detectHardware() hardware {
 		parts := strings.Split(line, ", ")
 		if len(parts) == 2 {
 			hw.GPUModel = strings.TrimSpace(parts[0])
-			fmt.Sscanf(strings.TrimSpace(parts[1]), "%d", &hw.VRAMMB)
+			_, _ = fmt.Sscanf(strings.TrimSpace(parts[1]), "%d", &hw.VRAMMB)
 		}
 	}
 	return hw

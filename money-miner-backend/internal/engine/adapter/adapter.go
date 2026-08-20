@@ -112,7 +112,7 @@ func fileSHA256(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
 		return "", err
@@ -152,7 +152,7 @@ func freePort() (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer l.Close()
+	defer func() { _ = l.Close() }()
 	return l.Addr().(*net.TCPAddr).Port, nil
 }
 
@@ -161,13 +161,13 @@ func renderArgs(tmpl []string, cfg engine.EngineConfig, apiPort int) []string {
 	pool := cfg.PoolURL
 	host, port := poolHostPort(pool)
 	repl := map[string]string{
-		"{pool}":         pool,
-		"{pool_host}":    host,
-		"{pool_port}":    port,
-		"{wallet}":       cfg.Wallet,
-		"{worker}":       cfg.WorkerName,
-		"{threads}":      fmt.Sprintf("%d", max(1, cfg.Threads)),
-		"{api_port}":     fmt.Sprintf("%d", apiPort),
+		"{pool}":          pool,
+		"{pool_host}":     host,
+		"{pool_port}":     port,
+		"{wallet}":        cfg.Wallet,
+		"{worker}":        cfg.WorkerName,
+		"{threads}":       fmt.Sprintf("%d", max(1, cfg.Threads)),
+		"{api_port}":      fmt.Sprintf("%d", apiPort),
 		"{gpu_intensity}": fmt.Sprintf("%d", cfg.GPU.Intensity),
 	}
 	out := make([]string, len(tmpl))
@@ -331,7 +331,7 @@ func fetchXmrigStats(port int) (engine.EngineStats, bool) {
 			continue
 		}
 		body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if err != nil || resp.StatusCode != http.StatusOK {
 			continue
 		}
@@ -366,7 +366,7 @@ func fetchLolminerStats(port int) (engine.EngineStats, bool) {
 	if err != nil {
 		return engine.EngineStats{}, false
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return engine.EngineStats{}, false
 	}

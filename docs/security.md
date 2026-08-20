@@ -59,5 +59,5 @@ Verify our own binaries against the release's `sha256sums.txt`.
 
 ## Reporting
 
-Security issues: **daniyal.ibrahim10@gmail.com** (no public issues for
+Security issues: **<daniyal.ibrahim10@gmail.com>** (no public issues for
 reports, please). Acknowledgment within 72 h.

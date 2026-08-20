@@ -63,10 +63,10 @@ type Hub struct {
 	originPatterns []string
 
 	mu    sync.Mutex
-	conns map[string]*workerConn       // workerID -> conn
-	live  map[string]*LiveWorker        // workerID -> live state
-	jobs  map[string]*jobState          // jobID -> counters
-	logs  map[string][]string           // workerID -> recent log lines (cap 20)
+	conns map[string]*workerConn // workerID -> conn
+	live  map[string]*LiveWorker // workerID -> live state
+	jobs  map[string]*jobState   // jobID -> counters
+	logs  map[string][]string    // workerID -> recent log lines (cap 20)
 }
 
 type jobState struct {
@@ -133,7 +133,7 @@ func (h *Hub) HandleWS(w http.ResponseWriter, r *http.Request) {
 	wc := &workerConn{conn: conn}
 	h.register(workerID, owner, kind, wc)
 	defer h.unregister(workerID)
-	defer conn.Close(websocket.StatusNormalClosure, "bye")
+	defer func() { _ = conn.Close(websocket.StatusNormalClosure, "bye") }()
 
 	_ = h.st.SetWorkerStatus(r.Context(), workerID, "connected")
 	h.ev.Publish(owner, events.Event{Type: "worker_joined", Data: map[string]any{"id": workerID, "kind": kind}})

@@ -225,7 +225,7 @@ func (c *Codes) Enroll(ctx context.Context, code, name string, hw Hardware) (Enr
 	if err != nil {
 		return EnrollResult{}, err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }() // rollback-after-commit is a no-op
 
 	var workerID string
 	err = tx.QueryRow(ctx, `
