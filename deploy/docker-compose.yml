@@ -1,0 +1,76 @@
+# money-miner production stack (this box): one-shot Flyway migrate, then
+# server + frontend. All publishes are loopback-only; the host nginx is the
+# TLS edge (money-miner.thecsdoctor.com -> 127.0.0.1:3300, /api -> :8080).
+#
+# Secrets come from deploy/.env (chmod 600, gitignored) — see .env.example.
+name: money-miner
+
+services:
+  migrate:
+    image: flyway/flyway:11-alpine@sha256:df06535dfd6559ae5f0628c4761013dfa4ea6a30cf6e34294931d8091f55a18f
+    # One-shot schema owner (dossier 03): runs `migrate` and exits. The
+    # schema persists in postgres, so it must NOT restart-loop; a manual
+    # `docker compose up -d` re-applies any pending migrations.
+    restart: "no"
+    command: >
+      -url=jdbc:postgresql://db:5432/money_miner
+      -user=money_miner
+      -password=${MONEY_MINER_DB_PASSWORD}
+      -locations=filesystem:/flyway/sql
+      -connectRetries=30
+      migrate
+    volumes:
+      - ./migrations:/flyway/sql:ro
+    networks:
+      - infra
+
+  server:
+    build:
+      context: ../money-miner-backend
+      args:
+        VERSION: ${MM_VERSION:-dev}
+    image: ghcr.io/thecsdoctor/money-miner-server:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      MM_LISTEN: 0.0.0.0:8080
+      MM_DATABASE_URL: postgres://money_miner:${MONEY_MINER_DB_PASSWORD}@db:5432/money_miner?sslmode=disable
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/v1/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - default
+      - infra
+
+  frontend:
+    build:
+      context: ../money-miner-frontend
+    image: ghcr.io/thecsdoctor/money-miner-frontend:latest
+    restart: unless-stopped
+    environment:
+      MM_API_URL: /api
+      MM_KC_URL: https://auth.thecsdoctor.com
+      MM_KC_REALM: money-miner
+      MM_KC_CLIENT_ID: money-miner-app
+    ports:
+      - "127.0.0.1:3300:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - default
+
+networks:
+  infra:
+    external: true

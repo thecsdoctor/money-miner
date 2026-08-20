@@ -1,0 +1,82 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache-dependency-path: money-miner-backend/go.sum
+      - name: build
+        working-directory: money-miner-backend
+        run: go build ./...
+      - name: vet
+        working-directory: money-miner-backend
+        run: go vet ./...
+      - name: test
+        working-directory: money-miner-backend
+        run: go test ./...
+      - name: wasm builds (GOOS=js GOARCH=wasm)
+        working-directory: money-miner-backend
+        run: GOOS=js GOARCH=wasm CGO_ENABLED=0 go build -o /tmp/browserhash.wasm ./cmd/browserhash
+      - name: worker cross-compile matrix (6 targets, CGO_ENABLED=0)
+        working-directory: money-miner-backend
+        run: |
+          set -e
+          for p in linux/amd64 linux/arm64 windows/amd64 windows/arm64 darwin/amd64 darwin/arm64; do
+            os=${p%/*}; arch=${p#*/}
+            CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -o /dev/null ./cmd/worker
+            echo "ok $p"
+          done
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache-dependency-path: money-miner-backend/go.sum
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: latest
+          working-directory: money-miner-backend
+          args: --timeout 5m
+
+  openapi:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: validate openapi.yaml
+        run: npx --yes @apidevtools/swagger-cli@4.0.4 validate money-miner-api/openapi.yaml
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: typecheck + build
+        working-directory: money-miner-frontend
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+
+  docs-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: markdownlint docs
+        run: npx --yes markdownlint-cli2@0.17.2 --config .markdownlint.jsonc "docs/**/*.md" "README.md"

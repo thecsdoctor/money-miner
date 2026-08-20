@@ -1,0 +1,11 @@
+# swaggerapi/swagger-editor serving the spec at /?url=/openapi.yaml
+# Loopback-only publish, per box policy. Edit money-miner-api/openapi.yaml
+# and refresh — the file is bind-mounted live.
+services:
+  swagger-editor:
+    image: swaggerapi/swagger-editor:v5.8.5@sha256:db2dff1f0a8865d23eb6cbd4b52d68e85e76ad5b391a7c49e374f1cb237ff5fb
+    restart: unless-stopped
+    volumes:
+      - ./openapi.yaml:/usr/share/nginx/html/openapi.yaml:ro
+    ports:
+      - "127.0.0.1:3301:80" # v5 image serves nginx on container :80

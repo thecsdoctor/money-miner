@@ -1,0 +1,860 @@
+openapi: 3.0.3
+info:
+  title: money-miner API
+  version: 0.1.0
+  description: |
+    REST + realtime contract for the money-miner master server.
+
+    Auth: Keycloak RS256 bearer tokens (`Authorization: Bearer <jwt>`),
+    roles from `realm_access.roles`. Every user-owned resource is scoped by
+    the JWT `sub` (tenant isolation). Errors use the envelope
+    `{"error": {"code", "message", "details?}}`.
+
+    Realtime: SSE `GET /v1/events` for user-facing live updates; WebSocket
+    `/v1/swarm/ws` is reserved for the worker control channel.
+
+    Honesty: objects produced by the SIMULATED engine always carry
+    `"engine": "simulated"`. There are no balances and no withdrawals —
+    payouts are on-chain, explorer-linked observations.
+  contact:
+    name: money-miner
+    url: https://github.com/thecsdoctor/money-miner
+  license:
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.txt
+servers:
+  - url: https://money-miner.thecsdoctor.com/api
+    description: production (via nginx edge; /api rewrites to /v1)
+  - url: http://127.0.0.1:8080/v1
+    description: local loopback
+tags:
+  - name: public
+  - name: currencies
+  - name: wallets
+  - name: miners
+  - name: swarm
+  - name: payouts
+  - name: settings
+paths:
+  /healthz:
+    get:
+      tags: [public]
+      summary: Liveness probe (unauthenticated)
+      operationId: getHealthz
+      security: []
+      responses:
+        '200':
+          description: service is up
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, version]
+                properties:
+                  status: { type: string, example: ok }
+                  version: { type: string, example: 0.1.0 }
+                  db: { type: string, example: ok }
+  /swarm/enroll:
+    post:
+      tags: [public, swarm]
+      summary: Redeem a one-time join code for worker credentials
+      description: |
+        Public, rate-limited (10/min/IP). The code row is consumed
+        atomically in the same transaction that creates the worker.
+        Unknown, expired and consumed codes return the same error shape
+        (no oracle). The worker_token is shown exactly once; the server
+        stores SHA-256(token) only.
+      operationId: enrollWorker
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, name, hardware]
+              properties:
+                code: { type: string, example: XXXX-XXXX-XX }
+                name: { type: string, example: kitchen-laptop }
+                hardware:
+                  $ref: '#/components/schemas/Hardware'
+      responses:
+        '201':
+          description: worker enrolled
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [worker_id, worker_token, wss_url]
+                properties:
+                  worker_id: { type: string, format: uuid }
+                  worker_token: { type: string, description: "256-bit opaque token, shown once" }
+                  wss_url: { type: string, example: wss://money-miner.thecsdoctor.com/api/swarm/ws }
+        '404': { $ref: '#/components/responses/CodeInvalid' }
+        '410': { $ref: '#/components/responses/CodeInvalid' }
+        '409': { $ref: '#/components/responses/CodeInvalid' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /public/join-info:
+    get:
+      tags: [public]
+      summary: Code validity + app branding for the public /join page (30/min/IP)
+      operationId: getJoinInfo
+      security: []
+      parameters:
+        - { name: code, in: query, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: join info (valid code)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [valid, app_name, app_domain]
+                properties:
+                  valid: { type: boolean }
+                  app_name: { type: string, example: money-miner }
+                  app_domain: { type: string, example: money-miner.thecsdoctor.com }
+                  browser_mining:
+                    type: object
+                    properties:
+                      available: { type: boolean }
+                      reason: { type: string }
+        '404': { $ref: '#/components/responses/CodeInvalid' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /swarm/ws:
+    get:
+      tags: [public, swarm]
+      summary: Worker control channel (WebSocket upgrade; worker_token bearer)
+      operationId: swarmWebsocket
+      security: []
+      parameters:
+        - { name: Authorization, in: header, required: true, schema: { type: string }, description: 'Bearer <worker_token>' }
+      responses:
+        '101': { description: switching protocols }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /currencies:
+    get:
+      tags: [currencies]
+      summary: Coin catalog (20 rows)
+      operationId: listCurrencies
+      responses:
+        '200':
+          description: catalog
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Currency' }
+                  total: { type: integer, example: 20 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /currencies/{symbol}:
+    get:
+      tags: [currencies]
+      summary: Currency detail incl. adapter_config, pools, explorer templates
+      operationId: getCurrency
+      parameters:
+        - { name: symbol, in: path, required: true, schema: { type: string, example: XMR } }
+      responses:
+        '200':
+          description: currency
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Currency' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /wallets:
+    get:
+      tags: [wallets]
+      summary: My wallets
+      operationId: listWallets
+      responses:
+        '200':
+          description: wallets
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Wallet' } }
+                  total: { type: integer }
+    post:
+      tags: [wallets]
+      summary: Attach a payout wallet (format-validated; addresses only, never keys)
+      operationId: createWallet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currency, address]
+              properties:
+                currency: { type: string, example: XMR }
+                address: { type: string }
+                label: { type: string }
+      responses:
+        '201':
+          description: created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Wallet' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { description: wallet for this currency already exists, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  /wallets/{id}:
+    delete:
+      tags: [wallets]
+      summary: Delete a wallet
+      operationId: deleteWallet
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      responses:
+        '204': { description: deleted }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /miners:
+    get:
+      tags: [miners]
+      summary: List my miners (with live hashrate)
+      operationId: listMiners
+      responses:
+        '200':
+          description: miners
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Miner' } }
+                  total: { type: integer }
+    post:
+      tags: [miners]
+      summary: Create a miner
+      description: Rejects `engine_strategy=deferred` currencies (XCH) with `currency_deferred`.
+      operationId: createMiner
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, currency, pool_url]
+              properties:
+                name: { type: string }
+                currency: { type: string, example: XMR }
+                wallet_id: { type: string, format: uuid }
+                pool_url: { type: string, example: 'stratum+tcp://pool.supportxmr.com:443' }
+                engine: { type: string, enum: [adapter, native-go, simulated], description: 'simulated only when the server has ALLOW_SIMULATED=true' }
+                cpu_pct: { type: integer, minimum: 1, maximum: 100, default: 50 }
+                gpu_pct: { type: integer, minimum: 0, maximum: 100, default: 0 }
+      responses:
+        '201':
+          description: created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Miner' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /miners/{id}:
+    get:
+      tags: [miners]
+      summary: Miner detail + current run
+      operationId: getMiner
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      responses:
+        '200':
+          description: miner
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MinerDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [miners]
+      summary: Rename / re-wallet / re-pool a miner
+      operationId: updateMiner
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                wallet_id: { type: string, format: uuid }
+                pool_url: { type: string }
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Miner' }
+    delete:
+      tags: [miners]
+      summary: Delete a miner (runs/payouts history survives)
+      operationId: deleteMiner
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      responses:
+        '204': { description: deleted }
+  /miners/{id}/start:
+    post:
+      tags: [miners]
+      summary: Start mining (assigns to workers per allocation)
+      operationId: startMiner
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      responses:
+        '202':
+          description: start accepted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Miner' }
+        '409': { description: already running, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  /miners/{id}/stop:
+    post:
+      tags: [miners]
+      summary: Stop mining
+      operationId: stopMiner
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      responses:
+        '202':
+          description: stop accepted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Miner' }
+  /miners/{id}/allocation:
+    post:
+      tags: [miners]
+      summary: Live allocation update
+      description: 'Clamps: native workers honor threads=int(cores*cpu_pct); browser workers clamp to <=50% duty cycle regardless.'
+      operationId: setMinerAllocation
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                cpu_pct: { type: integer, minimum: 1, maximum: 100 }
+                gpu_pct: { type: integer, minimum: 0, maximum: 100 }
+      responses:
+        '200':
+          description: updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Miner' }
+  /miners/{id}/history:
+    get:
+      tags: [miners]
+      summary: Runs + metric rollups
+      operationId: getMinerHistory
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+        - { name: resolution, in: query, schema: { type: string, enum: [raw, hourly], default: hourly } }
+      responses:
+        '200':
+          description: history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  runs: { type: array, items: { $ref: '#/components/schemas/MinerRun' } }
+                  series: { type: array, items: { $ref: '#/components/schemas/MetricPoint' } }
+  /miners/{id}/metrics:
+    get:
+      tags: [miners]
+      summary: Recent raw metric samples
+      operationId: getMinerMetrics
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+        - { name: limit, in: query, schema: { type: integer, default: 120, maximum: 1000 } }
+      responses:
+        '200':
+          description: samples
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/MetricPoint' } }
+  /workers:
+    get:
+      tags: [swarm]
+      summary: Swarm worker list
+      operationId: listWorkers
+      responses:
+        '200':
+          description: workers
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Worker' } }
+                  total: { type: integer }
+  /workers/{id}:
+    get:
+      tags: [swarm]
+      summary: Worker detail + recent metrics
+      operationId: getWorker
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      responses:
+        '200':
+          description: worker
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Worker' }
+    delete:
+      tags: [swarm]
+      summary: Delete a worker record
+      operationId: deleteWorker
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      responses:
+        '204': { description: deleted }
+  /workers/{id}/revoke:
+    post:
+      tags: [swarm]
+      summary: Revoke a worker token (live WS closed, engines stopped on next contact)
+      operationId: revokeWorker
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      responses:
+        '200':
+          description: revoked
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Worker' }
+  /swarm/join-codes:
+    get:
+      tags: [swarm]
+      summary: My active join codes (ids + expiry only, never plaintext)
+      operationId: listJoinCodes
+      responses:
+        '200':
+          description: codes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/JoinCode' } }
+    post:
+      tags: [swarm]
+      summary: Generate a one-time join code (plaintext shown once)
+      operationId: createJoinCode
+      responses:
+        '201':
+          description: created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, code, expires_at, enroll_command]
+                properties:
+                  id: { type: string, format: uuid }
+                  code: { type: string, example: XXXX-XXXX-XX }
+                  expires_at: { type: string, format: date-time }
+                  enroll_command: { type: string, example: 'money-miner-worker enroll https://money-miner.thecsdoctor.com XXXX-XXXX-XX' }
+  /swarm/join-codes/{id}:
+    delete:
+      tags: [swarm]
+      summary: Revoke an unconsumed join code
+      operationId: deleteJoinCode
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      responses:
+        '204': { description: revoked }
+  /swarm/stats:
+    get:
+      tags: [swarm]
+      summary: Aggregate swarm stats (dashboard orb payload)
+      operationId: getSwarmStats
+      responses:
+        '200':
+          description: stats
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SwarmStats' }
+  /payouts:
+    get:
+      tags: [payouts]
+      summary: Payout ledger with explorer links
+      operationId: listPayouts
+      parameters:
+        - { name: currency, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+        - { name: limit, in: query, schema: { type: integer, default: 50 } }
+        - { name: offset, in: query, schema: { type: integer, default: 0 } }
+      responses:
+        '200':
+          description: payouts
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Payout' } }
+                  total: { type: integer }
+  /blocks-found:
+    get:
+      tags: [payouts]
+      summary: Block finds with explorer links
+      operationId: listBlocksFound
+      responses:
+        '200':
+          description: blocks
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/BlockFound' } }
+                  total: { type: integer }
+  /settings:
+    get:
+      tags: [settings]
+      summary: All my KV settings
+      operationId: listSettings
+      responses:
+        '200':
+          description: settings
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /settings/{key}:
+    put:
+      tags: [settings]
+      summary: Set a setting (theme, language, electricity_cost, ...)
+      operationId: putSetting
+      parameters:
+        - { name: key, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [value]
+              properties:
+                value: { }
+      responses:
+        '200': { description: stored }
+  /currency-settings:
+    get:
+      tags: [settings]
+      summary: Per-currency overrides
+      operationId: listCurrencySettings
+      responses:
+        '200':
+          description: overrides
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/CurrencySetting' } }
+  /currency-settings/{symbol}:
+    put:
+      tags: [settings]
+      summary: Set per-currency override (pool_url, enabled, custom_adapter)
+      operationId: putCurrencySetting
+      parameters:
+        - { name: symbol, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                pool_url: { type: string }
+                enabled: { type: boolean }
+                custom_adapter: { type: object, additionalProperties: true }
+      responses:
+        '200': { description: stored }
+  /exchange-settings:
+    get:
+      tags: [settings]
+      summary: Exchange preferences
+      operationId: listExchangeSettings
+      responses:
+        '200':
+          description: exchange settings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/ExchangeSetting' } }
+  /exchange-settings/{exchange}:
+    put:
+      tags: [settings]
+      summary: Set exchange preference (optional read-only API key, pgcrypto-encrypted at rest)
+      operationId: putExchangeSetting
+      parameters:
+        - { name: exchange, in: path, required: true, schema: { type: string, example: kraken } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                currencies: { type: array, items: { type: string } }
+                api_key: { type: string, description: 'read-only key; encrypted at rest; never returned by the API' }
+      responses:
+        '200': { description: stored }
+  /events:
+    get:
+      tags: [settings]
+      summary: SSE stream (worker_joined, worker_left, metrics_tick, miner_status, payout_detected, block_found)
+      description: 'Server-Sent Events. metrics_tick every 5s carries the orb payload. Max 5 concurrent connections per user.'
+      operationId: eventsStream
+      responses:
+        '200':
+          description: event stream
+          content:
+            text/event-stream:
+              schema: { type: string }
+components:
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Keycloak RS256 access token; tenant = `sub`; roles in `realm_access.roles`.
+  responses:
+    Unauthorized:
+      description: missing/invalid token
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: not found
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    BadRequest:
+      description: validation failure
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RateLimited:
+      description: rate limit exceeded
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    CodeInvalid:
+      description: code unknown/expired/consumed — identical shape on purpose (no oracle)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, example: wallet_invalid }
+            message: { type: string }
+            details: { type: object, additionalProperties: true }
+    Hardware:
+      type: object
+      required: [kind]
+      properties:
+        kind: { type: string, enum: [native, browser], example: native }
+        os: { type: string, example: linux }
+        arch: { type: string, example: amd64 }
+        cpu_model: { type: string }
+        cpu_cores: { type: integer }
+        gpu_model: { type: string }
+        vram_mb: { type: integer }
+    Currency:
+      type: object
+      required: [symbol, name, algorithm, hardware_class, engine_strategy, enabled]
+      properties:
+        id: { type: string, format: uuid }
+        symbol: { type: string, example: XMR }
+        name: { type: string, example: Monero }
+        algorithm: { type: string, example: randomx }
+        hardware_class: { type: string, enum: [cpu, gpu, cpu+gpu, storage] }
+        engine_strategy: { type: string, enum: [adapter, native-go, browser-wasm, deferred] }
+        adapter_config: { type: object, additionalProperties: true }
+        min_vram_mb: { type: integer, nullable: true }
+        explorer_tx_tpl: { type: string, example: 'https://xmrchain.net/tx/{txid}' }
+        explorer_addr_tpl: { type: string }
+        homepage: { type: string }
+        pools:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              url: { type: string }
+              api_tpl: { type: string, description: 'pool stats API URL template, {address} placeholder' }
+              fee_pct: { type: number }
+        enabled: { type: boolean }
+        deferred_note: { type: string, description: 'present when engine_strategy=deferred' }
+    Wallet:
+      type: object
+      required: [id, currency, address, validated, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        currency: { type: string, example: XMR }
+        address: { type: string }
+        label: { type: string }
+        validated: { type: boolean }
+        created_at: { type: string, format: date-time }
+    Miner:
+      type: object
+      required: [id, name, currency, engine, pool_url, cpu_pct, gpu_pct, status, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        currency: { type: string, example: XMR }
+        wallet_id: { type: string, format: uuid, nullable: true }
+        engine: { type: string, enum: [adapter, native-go, simulated] }
+        simulated: { type: boolean, description: 'convenience flag, true iff engine=simulated' }
+        pool_url: { type: string }
+        cpu_pct: { type: integer }
+        gpu_pct: { type: integer }
+        status: { type: string, enum: [created, queued, running, stopping, stopped, error] }
+        hashrate: { type: number, description: 'live H/s, 0 when not running' }
+        shares_accepted: { type: integer }
+        shares_rejected: { type: integer }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    MinerDetail:
+      allOf:
+        - $ref: '#/components/schemas/Miner'
+        - type: object
+          properties:
+            current_run: { $ref: '#/components/schemas/MinerRun' }
+            workers:
+              type: array
+              items: { $ref: '#/components/schemas/Worker' }
+    MinerRun:
+      type: object
+      required: [id, miner_id, started_at]
+      properties:
+        id: { type: string, format: uuid }
+        miner_id: { type: string, format: uuid }
+        started_at: { type: string, format: date-time }
+        stopped_at: { type: string, format: date-time, nullable: true }
+        stop_reason: { type: string, enum: [user, error, revoked], nullable: true }
+        avg_hashrate: { type: number }
+        shares_accepted: { type: integer }
+        shares_rejected: { type: integer }
+    MetricPoint:
+      type: object
+      required: [ts, hashrate]
+      properties:
+        ts: { type: string, format: date-time }
+        hashrate: { type: number }
+        shares_accepted: { type: integer }
+        shares_rejected: { type: integer }
+    Worker:
+      type: object
+      required: [id, name, kind, status, enrolled_at]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        kind: { type: string, enum: [native, browser, master] }
+        os: { type: string }
+        arch: { type: string }
+        cpu_model: { type: string }
+        cpu_cores: { type: integer }
+        gpu_model: { type: string }
+        vram_mb: { type: integer }
+        caps: { type: object, additionalProperties: true }
+        status: { type: string, enum: [enrolled, connected, assigned, mining, idle, offline, revoked] }
+        hashrate: { type: number, description: 'live aggregate H/s across its jobs' }
+        currency: { type: string, description: 'currency of its active job, if any' }
+        last_seen: { type: string, format: date-time, nullable: true }
+        enrolled_at: { type: string, format: date-time }
+    JoinCode:
+      type: object
+      required: [id, expires_at, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        expires_at: { type: string, format: date-time }
+        consumed: { type: boolean }
+        created_at: { type: string, format: date-time }
+    SwarmStats:
+      type: object
+      required: [workers, totals]
+      properties:
+        workers:
+          type: array
+          items: { $ref: '#/components/schemas/Worker' }
+        totals:
+          type: object
+          properties:
+            workers_online: { type: integer }
+            workers_total: { type: integer }
+            hashrate: { type: number }
+            shares_24h: { type: integer }
+            payouts_24h: { type: number }
+            per_currency:
+              type: array
+              items:
+                type: object
+                properties:
+                  currency: { type: string }
+                  hashrate: { type: number }
+                  miners_running: { type: integer }
+    Payout:
+      type: object
+      required: [id, currency, amount, verified, detected_at]
+      properties:
+        id: { type: string, format: uuid }
+        currency: { type: string, example: XMR }
+        amount: { type: number }
+        txid: { type: string }
+        explorer_url: { type: string, description: 'always rendered by the UI; the source of truth' }
+        source_pool: { type: string }
+        verified: { type: boolean, description: 'explorer-verifiable; otherwise flagged unverified' }
+        paid_at: { type: string, format: date-time, nullable: true }
+        detected_at: { type: string, format: date-time }
+    BlockFound:
+      type: object
+      required: [id, currency]
+      properties:
+        id: { type: string, format: uuid }
+        currency: { type: string }
+        height: { type: integer }
+        hash: { type: string }
+        found_at: { type: string, format: date-time, nullable: true }
+        source: { type: string }
+        explorer_url: { type: string }
+    CurrencySetting:
+      type: object
+      properties:
+        currency: { type: string }
+        pool_url: { type: string }
+        enabled: { type: boolean }
+        custom_adapter: { type: object, additionalProperties: true }
+    ExchangeSetting:
+      type: object
+      properties:
+        exchange: { type: string }
+        currencies: { type: array, items: { type: string } }
+        has_api_key: { type: boolean, description: 'the key itself is never returned' }
+security:
+  - bearerAuth: []

@@ -1,0 +1,35 @@
+site_name: money-miner
+repo_url: https://github.com/thecsdoctor/money-miner
+site_description: Self-hosted cryptocurrency mining swarm platform
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/weather-sunny
+        name: light
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/weather-night
+        name: dark
+  features:
+    - navigation.tabs
+    - content.code.copy
+nav:
+  - Home: index.md
+  - Installation: installation.md
+  - Quickstart: quickstart.md
+  - Architecture: architecture.md
+  - Swarm & Workers: swarm.md
+  - Browser (phone) mining: browser-mining.md
+  - Supported Coins: coins.md
+  - API Reference: api.md
+  - Security & Honesty: security.md
+  - Roadmap / Milestones: roadmap.md
+  - Contributing: contributing.md
+markdown_extensions:
+  - admonition
+  - tables
+  - fenced_code

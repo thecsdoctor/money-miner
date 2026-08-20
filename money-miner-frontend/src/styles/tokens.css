@@ -1,0 +1,29 @@
+/* money-miner design tokens (dossier 05) — pure CSS custom properties.
+   Dark is the default brand look; light via :root[data-theme="light"]. */
+
+:root {
+  /* surfaces */
+  --bg: #0b0e14; --bg-raise: #121722; --bg-card: #161d2b; --line: #232c3f;
+  /* ink */
+  --ink: #e8edf6; --ink-dim: #9aa7bd; --ink-faint: #5f6c85;
+  /* brand + semantics */
+  --brand: #f7931a;            /* bitcoin-amber accent */
+  --brand-ink: #1a1206;
+  --ok: #34d399; --warn: #fbbf24; --err: #f87171; --info: #60a5fa;
+  /* typography — system stack, zero webfonts */
+  --font: ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  --fs-1: .75rem; --fs-2: .875rem; --fs-3: 1rem; --fs-4: 1.25rem;
+  --fs-5: 1.6rem; --fs-6: 2.1rem;
+  /* space / radius / motion */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-6: 24px; --sp-8: 32px;
+  --r-1: 6px; --r-2: 10px; --r-3: 16px;
+  --elev-1: 0 1px 2px rgb(0 0 0 / .4);
+  --t-fast: 120ms; --t-med: 240ms; --ease: cubic-bezier(.2,.7,.3,1);
+}
+
+:root[data-theme="light"] {
+  --bg: #f6f7f9; --bg-raise: #ffffff; --bg-card: #ffffff; --line: #dde3ec;
+  --ink: #17202e; --ink-dim: #4d5b73; --ink-faint: #8592a8;
+  --elev-1: 0 1px 3px rgb(23 32 46 / .12);
+}

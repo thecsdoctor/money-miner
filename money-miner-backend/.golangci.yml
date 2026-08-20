@@ -1,0 +1,18 @@
+version: "2"
+run:
+  relative-path-mode: gomod
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+  disable:
+    - err113 # wrapped dynamic errors are fine for this codebase
+formatters:
+  enable:
+    - gofmt
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

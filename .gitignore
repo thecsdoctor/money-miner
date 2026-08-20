@@ -1,0 +1,30 @@
+# Secrets — NEVER commit. This line must stay at the top.
+.env
+*.env
+!.env.example
+
+# Build output
+dist/
+build/
+money-miner-frontend/public/wasm/*.wasm
+money-miner-frontend/public/wasm/wasm_exec.js
+
+# Node
+node_modules/
+
+# Go
+*.test
+*.out
+/vendor/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+
+# Generated API types (regenerate with `make -C money-miner-api types`)
+money-miner-backend/internal/apigen/
+money-miner-frontend/src/api/types.generated.ts
+
+# Local data
+*.log
