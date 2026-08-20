@@ -166,11 +166,12 @@ func (h *Hub) supervise(workerID string, wc *workerConn, done chan struct{}) {
 		case <-t.C:
 			h.mu.Lock()
 			lw := h.live[workerID]
-			last := lw.LastMsg
-			h.mu.Unlock()
 			if lw == nil {
+				h.mu.Unlock()
 				return
 			}
+			last := lw.LastMsg
+			h.mu.Unlock()
 			if time.Since(last) <= HeartbeatWindow {
 				continue
 			}
